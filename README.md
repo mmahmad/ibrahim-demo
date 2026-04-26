@@ -4,6 +4,8 @@ A lightweight web app that transcribes English audio files and translates the tr
 
 ## Demo
 
+![Audio Transcriber screenshot](docs/screenshot.png)
+
 1. Upload an audio file
 2. Get the English transcript
 3. See the Urdu translation appear below
