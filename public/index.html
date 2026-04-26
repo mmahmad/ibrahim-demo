@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio Transcriber</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f7;
+      --surface: #ffffff;
+      --border: #d1d1d6;
+      --border-hover: #0071e3;
+      --text: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --accent: #0071e3;
+      --accent-hover: #0077ed;
+      --danger: #ff3b30;
+      --success: #34c759;
+      --radius: 14px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    header p {
+      color: var(--text-secondary);
+      margin-top: 6px;
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px;
+      width: 100%;
+      max-width: 640px;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: var(--border-hover);
+      background: #f0f6ff;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-zone .icon {
+      font-size: 2.5rem;
+      margin-bottom: 12px;
+    }
+
+    .drop-zone .label {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .drop-zone .sublabel {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Selected file info */
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: #f0f6ff;
+      border: 1px solid #c5dcf8;
+      border-radius: 10px;
+      margin-top: 16px;
+    }
+
+    .file-info.visible { display: flex; }
+
+    .file-info .file-icon { font-size: 1.6rem; }
+
+    .file-info .file-meta { flex: 1; min-width: 0; }
+
+    .file-info .file-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-info .file-size {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+
+    .file-info .remove-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      padding: 4px;
+      border-radius: 50%;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .file-info .remove-btn:hover {
+      color: var(--danger);
+      background: #fff0ee;
+    }
+
+    /* Audio preview */
+    audio {
+      display: none;
+      width: 100%;
+      margin-top: 14px;
+      border-radius: 8px;
+      accent-color: var(--accent);
+    }
+
+    audio.visible { display: block; }
+
+    /* Submit button */
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      margin-top: 20px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+    }
+
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* Loading */
+    .loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 28px 0 8px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .loading.visible { display: flex; }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #e0e0e5;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    .error-box {
+      display: none;
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #fff2f2;
+      border: 1px solid #ffc7c5;
+      border-radius: 10px;
+      color: var(--danger);
+      font-size: 0.88rem;
+    }
+
+    .error-box.visible { display: block; }
+
+    /* Transcript */
+    .result {
+      display: none;
+      margin-top: 28px;
+      border-top: 1px solid var(--border);
+      padding-top: 24px;
+    }
+
+    .result.visible { display: block; }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .result-header h2 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .result-meta {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--text);
+      transition: background 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .icon-btn:hover { background: #ebebf0; border-color: #b0b0b5; }
+
+    .icon-btn.copied { color: var(--success); border-color: var(--success); background: #f0fef4; }
+
+    .transcript-box {
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    /* Urdu translation */
+    .translation-section {
+      margin-top: 24px;
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+    }
+
+    .translation-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .translation-header h2 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .translation-loading {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+      padding: 14px 0 2px;
+    }
+
+    .translation-loading .spinner-sm {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #e0e0e5;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      flex-shrink: 0;
+    }
+
+    .urdu-box {
+      background: #fffdf5;
+      border: 1px solid #e8e0c8;
+      border-radius: 10px;
+      padding: 18px;
+      font-size: 1.05rem;
+      line-height: 2;
+      direction: rtl;
+      text-align: right;
+      font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Urdu Typesetting', serif;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Audio Transcriber</h1>
+    <p>Upload an audio file to get an English transcript with Urdu translation</p>
+  </header>
+
+  <div class="card">
+    <!-- Upload area -->
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".mp3,.mp4,.m4a,.wav,.webm,.ogg,.flac" />
+      <div class="icon">🎙️</div>
+      <div class="label">Click to upload or drag & drop</div>
+      <div class="sublabel">MP3, WAV, M4A, FLAC, OGG, WEBM &middot; up to 25 MB</div>
+    </div>
+
+    <!-- File info -->
+    <div class="file-info" id="fileInfo">
+      <span class="file-icon">🔊</span>
+      <div class="file-meta">
+        <div class="file-name" id="fileName"></div>
+        <div class="file-size" id="fileSize"></div>
+      </div>
+      <button class="remove-btn" id="removeBtn" title="Remove file">✕</button>
+    </div>
+
+    <!-- Audio preview -->
+    <audio id="audioPreview" controls></audio>
+
+    <!-- Error -->
+    <div class="error-box" id="errorBox"></div>
+
+    <!-- Transcribe button -->
+    <button class="btn" id="transcribeBtn" disabled>Transcribe</button>
+
+    <!-- Loading -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <span>Transcribing your audio&hellip;</span>
+    </div>
+
+    <!-- Result -->
+    <div class="result" id="result">
+      <div class="result-header">
+        <h2>Transcript</h2>
+        <div class="result-actions">
+          <span class="result-meta" id="durationInfo"></span>
+          <button class="icon-btn" id="copyBtn">📋 Copy</button>
+          <button class="icon-btn" id="downloadBtn">⬇️ Download</button>
+        </div>
+      </div>
+      <div class="transcript-box" id="transcriptBox"></div>
+
+      <!-- Urdu translation -->
+      <div class="translation-section" id="translationSection" style="display:none">
+        <div class="translation-header">
+          <h2>اردو ترجمہ</h2>
+          <div class="result-actions">
+            <button class="icon-btn" id="copyUrduBtn">📋 Copy</button>
+          </div>
+        </div>
+        <div class="translation-loading" id="translationLoading">
+          <div class="spinner-sm"></div>
+          <span>Translating to Urdu…</span>
+        </div>
+        <div class="urdu-box" id="urduBox" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const removeBtn = document.getElementById('removeBtn');
+    const audioPreview = document.getElementById('audioPreview');
+    const transcribeBtn = document.getElementById('transcribeBtn');
+    const loading = document.getElementById('loading');
+    const errorBox = document.getElementById('errorBox');
+    const result = document.getElementById('result');
+    const transcriptBox = document.getElementById('transcriptBox');
+    const copyBtn = document.getElementById('copyBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const durationInfo = document.getElementById('durationInfo');
+    const translationSection = document.getElementById('translationSection');
+    const translationLoading = document.getElementById('translationLoading');
+    const urduBox = document.getElementById('urduBox');
+    const copyUrduBtn = document.getElementById('copyUrduBtn');
+
+    let selectedFile = null;
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function setFile(file) {
+      selectedFile = file;
+      fileName.textContent = file.name;
+      fileSize.textContent = formatBytes(file.size);
+      fileInfo.classList.add('visible');
+      audioPreview.src = URL.createObjectURL(file);
+      audioPreview.classList.add('visible');
+      transcribeBtn.disabled = false;
+      hideError();
+      result.classList.remove('visible');
+      translationSection.style.display = 'none';
+    }
+
+    function clearFile() {
+      selectedFile = null;
+      fileInput.value = '';
+      fileInfo.classList.remove('visible');
+      audioPreview.classList.remove('visible');
+      audioPreview.src = '';
+      transcribeBtn.disabled = true;
+      result.classList.remove('visible');
+      translationSection.style.display = 'none';
+      hideError();
+    }
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.add('visible');
+    }
+
+    function hideError() {
+      errorBox.classList.remove('visible');
+    }
+
+    // File input change
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) setFile(fileInput.files[0]);
+    });
+
+    // Drag & drop
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) setFile(file);
+    });
+
+    removeBtn.addEventListener('click', clearFile);
+
+    // Transcribe
+    transcribeBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      hideError();
+      result.classList.remove('visible');
+      loading.classList.add('visible');
+      transcribeBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('audio', selectedFile);
+
+      try {
+        const res = await fetch('/transcribe', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Transcription failed.');
+
+        transcriptBox.textContent = data.transcript;
+        durationInfo.textContent = data.duration ? `${data.duration}s` : '';
+        result.classList.add('visible');
+
+        // Kick off translation immediately after transcription
+        translateToUrdu(data.transcript);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        loading.classList.remove('visible');
+        transcribeBtn.disabled = false;
+      }
+    });
+
+    async function translateToUrdu(text) {
+      translationSection.style.display = 'block';
+      translationLoading.style.display = 'flex';
+      urduBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Translation failed.');
+        urduBox.textContent = data.translation;
+        urduBox.style.display = 'block';
+      } catch (err) {
+        urduBox.textContent = 'Translation failed: ' + err.message;
+        urduBox.style.display = 'block';
+      } finally {
+        translationLoading.style.display = 'none';
+      }
+    }
+
+    // Copy English
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(transcriptBox.textContent);
+        copyBtn.textContent = '✓ Copied!';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = '📋 Copy';
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      } catch {
+        showError('Could not copy to clipboard.');
+      }
+    });
+
+    // Copy Urdu
+    copyUrduBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(urduBox.textContent);
+        copyUrduBtn.textContent = '✓ Copied!';
+        copyUrduBtn.classList.add('copied');
+        setTimeout(() => {
+          copyUrduBtn.textContent = '📋 Copy';
+          copyUrduBtn.classList.remove('copied');
+        }, 2000);
+      } catch {
+        showError('Could not copy to clipboard.');
+      }
+    });
+
+    // Download
+    downloadBtn.addEventListener('click', () => {
+      const text = transcriptBox.textContent;
+      if (!text) return;
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (selectedFile ? selectedFile.name.replace(/\.[^.]+$/, '') : 'transcript') + '.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
